@@ -1,0 +1,213 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Support - ezgy</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            color: #ffffff;
+            background: #0a0a0a;
+            line-height: 1.6;
+        }
+
+        .container {
+            max-width: 900px;
+            margin: 0 auto;
+            padding: 80px 20px 60px;
+        }
+
+        .header {
+            text-align: center;
+            margin-bottom: 60px;
+        }
+
+        .header h1 {
+            font-size: 3rem;
+            font-weight: 700;
+            margin-bottom: 20px;
+            background: linear-gradient(135deg, rgba(100, 150, 255, 0.9), rgba(100, 150, 255, 0.6));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        .back-link {
+            display: inline-block;
+            color: rgba(100, 150, 255, 0.9);
+            text-decoration: none;
+            margin-bottom: 30px;
+            transition: all 0.3s ease;
+        }
+
+        .back-link:hover {
+            color: rgba(100, 150, 255, 1);
+            text-decoration: underline;
+        }
+
+        .content {
+            background: rgba(100, 150, 255, 0.05);
+            border: 1px solid rgba(100, 150, 255, 0.2);
+            border-radius: 15px;
+            padding: 40px;
+            backdrop-filter: blur(10px);
+        }
+
+        .content h2 {
+            font-size: 1.8rem;
+            margin-top: 40px;
+            margin-bottom: 20px;
+            color: rgba(100, 150, 255, 0.9);
+        }
+
+        .content h2:first-child {
+            margin-top: 0;
+        }
+
+        .content p {
+            margin-bottom: 20px;
+            opacity: 0.9;
+        }
+
+        .faq-item {
+            margin-bottom: 30px;
+            padding: 20px;
+            background: rgba(100, 150, 255, 0.05);
+            border-left: 3px solid rgba(100, 150, 255, 0.5);
+            border-radius: 8px;
+        }
+
+        .faq-item h3 {
+            color: rgba(100, 150, 255, 0.9);
+            margin-bottom: 10px;
+            font-size: 1.2rem;
+        }
+
+        .faq-item p {
+            opacity: 0.9;
+        }
+
+        .contact-box {
+            background: rgba(100, 150, 255, 0.1);
+            border: 2px solid rgba(100, 150, 255, 0.3);
+            border-radius: 12px;
+            padding: 30px;
+            margin-top: 40px;
+            text-align: center;
+        }
+
+        .contact-box h3 {
+            color: rgba(100, 150, 255, 0.9);
+            margin-bottom: 15px;
+            font-size: 1.5rem;
+        }
+
+        .contact-box p {
+            opacity: 0.9;
+            margin-bottom: 10px;
+        }
+
+        .contact-box a {
+            color: rgba(100, 150, 255, 0.9);
+            text-decoration: none;
+            font-size: 1.1rem;
+            font-weight: 500;
+            transition: all 0.3s ease;
+        }
+
+        .contact-box a:hover {
+            color: rgba(100, 150, 255, 1);
+            text-decoration: underline;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <a href="index.html" class="back-link">← Back to Home</a>
+        
+        <div class="header">
+            <h1>Support</h1>
+        </div>
+
+        <div class="content">
+            <h2>Frequently Asked Questions</h2>
+
+            <div class="faq-item">
+                <h3>How do I connect my Google Drive?</h3>
+                <p>
+                    When you first open ezgy, you'll be prompted to connect your Google Drive account. 
+                    Click "Connect Google Drive" and authorize the app to access your music files. 
+                    We only request read-only access to your files.
+                </p>
+            </div>
+
+            <div class="faq-item">
+                <h3>What music file formats are supported?</h3>
+                <p>
+                    ezgy supports common audio formats including MP3, FLAC, AAC, OGG, WAV, and M4A. 
+                    Your files are streamed directly from Google Drive, so no downloads are required.
+                </p>
+            </div>
+
+            <div class="faq-item">
+                <h3>Is my data secure?</h3>
+                <p>
+                    Yes! Your privacy is our priority. We only access your music files with your explicit permission. 
+                    All connections are encrypted, and we never store your music files on our servers. 
+                    Your data stays in your Google Drive at all times.
+                </p>
+            </div>
+
+            <div class="faq-item">
+                <h3>Can I create playlists?</h3>
+                <p>
+                    Yes! You can create custom playlists, organize your music by mood or genre, and save your favorite tracks. 
+                    Playlists are stored locally on your device.
+                </p>
+            </div>
+
+            <div class="faq-item">
+                <h3>Why can't I see my music files?</h3>
+                <p>
+                    Make sure your music files are in your Google Drive and that you've granted ezgy permission to access them. 
+                    Try disconnecting and reconnecting your Google Drive account if files aren't appearing.
+                </p>
+            </div>
+
+            <div class="faq-item">
+                <h3>Does ezgy work offline?</h3>
+                <p>
+                    Since ezgy streams music directly from Google Drive, an internet connection is required for playback. 
+                    However, you can access your playlists and library information offline once they've been loaded.
+                </p>
+            </div>
+
+            <div class="faq-item">
+                <h3>How do I revoke access to my Google Drive?</h3>
+                <p>
+                    You can revoke access at any time by going to your Google Account settings → Security → Third-party apps with account access. 
+                    Find ezgy and click "Remove access".
+                </p>
+            </div>
+
+            <div class="contact-box">
+                <h3>Still Need Help?</h3>
+                <p>If you have additional questions or need technical support, please contact us at:</p>
+                <p style="margin-top: 15px; margin-bottom: 20px;">
+                    <a href="mailto:mihriminaz@gmail.com">mihriminaz@gmail.com</a>
+                </p>
+                <p style="margin-top: 20px; opacity: 0.8;">
+                    We're here to help you get the most out of ezgy!
+                </p>
+            </div>
+        </div>
+    </div>
+</body>
+</html>
