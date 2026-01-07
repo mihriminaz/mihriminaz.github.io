@@ -176,6 +176,78 @@
         font-size: 16px;
       }
 
+      #picker-controls {
+        position: fixed;
+        top: calc(12px + env(safe-area-inset-top));
+        right: calc(12px + env(safe-area-inset-right));
+        z-index: 1001;
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+        opacity: 0;
+        pointer-events: none;
+        transition: opacity 0.3s ease;
+      }
+
+      #picker-controls.visible {
+        opacity: 1;
+        pointer-events: auto;
+      }
+
+      .picker-control-btn {
+        background: rgba(0, 0, 0, 0.9);
+        color: #f3f4f6;
+        border: 1px solid rgba(79, 70, 229, 0.4);
+        border-radius: 12px;
+        padding: 10px 16px;
+        font-size: 14px;
+        font-weight: 500;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        transition: all 0.2s ease;
+        box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
+        backdrop-filter: blur(10px);
+        min-width: 160px;
+        justify-content: center;
+      }
+
+      .picker-control-btn:hover {
+        background: rgba(79, 70, 229, 0.2);
+        border-color: rgba(79, 70, 229, 0.6);
+        transform: translateY(-1px);
+        box-shadow: 0 6px 20px rgba(0, 0, 0, 0.4);
+      }
+
+      .picker-control-btn:active {
+        transform: translateY(0);
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+      }
+
+      .picker-control-btn .icon {
+        font-size: 16px;
+      }
+
+      .picker-control-btn .text {
+        flex: 1;
+        text-align: center;
+      }
+
+      .picker-control-btn.loading {
+        opacity: 0.6;
+        cursor: not-allowed;
+        pointer-events: none;
+      }
+
+      .picker-control-btn.loading .icon {
+        animation: spin 1s linear infinite;
+      }
+
+      @keyframes spin {
+        to { transform: rotate(360deg); }
+      }
+
       /* Mobile optimizations */
       @media (max-width: 768px) {
         html, body {
@@ -260,6 +332,23 @@
 
         #selection-status.visible {
           transform: translateX(-50%) scale(1);
+        }
+
+        #picker-controls {
+          top: calc(8px + env(safe-area-inset-top));
+          right: calc(8px + env(safe-area-inset-right));
+          gap: 6px;
+        }
+
+        .picker-control-btn {
+          padding: 12px 14px;
+          font-size: 13px;
+          min-width: 140px;
+          border-radius: 10px;
+        }
+
+        .picker-control-btn .icon {
+          font-size: 14px;
         }
       }
       
@@ -595,12 +684,21 @@
                              /\.(mp3|m4a|wav|flac|aac|ogg|aiff)$/i.test(name);
 
               if (isAudio) {
+                const parentId = doc[google.picker.Document.PARENT_ID] || null;
                 files.push({
                   id: doc[google.picker.Document.ID],
                   name: name,
                   mimeType: mimeType,
-                  parentId: doc[google.picker.Document.PARENT_ID] || null
+                  parentId: parentId
                 });
+                
+                // Track the parent folder ID for "Select All" functionality
+                if (parentId && parentId !== 'root') {
+                  currentFolderId = parentId;
+                  console.log('📂 Tracked parent folder:', parentId);
+                  updateSelectAllButtonText();
+                }
+                
                 console.log('✅ Added audio file:', name, '(ID:', doc[google.picker.Document.ID], ')');
               } else {
                 skippedFiles.push({
@@ -825,6 +923,16 @@
           picker.setVisible(true);
           hideLoader();
           enforceFullScreen();
+          
+          // Show picker controls after a short delay to ensure picker is rendered
+          setTimeout(() => {
+            if (PICKER_CONFIG.mode === 'files') {
+              showPickerControls();
+              // Try to detect folder navigation
+              detectFolderNavigation();
+            }
+          }, 500);
+          
           return true;
         } catch (error) {
           console.error('Failed to create Google Picker', error);
@@ -878,8 +986,355 @@
       let pickerInitialized = false;
       let pickerScriptLoaded = false;
       let pickerModuleReady = false;
+      let currentFolderId = null;
+      let isSelectingAll = false;
 
       window.addEventListener('resize', enforceFullScreen);
+
+      // Show picker controls when picker is visible
+      function showPickerControls() {
+        if (PICKER_CONFIG.mode === 'files') {
+          const controls = document.getElementById('picker-controls');
+          if (controls) {
+            controls.classList.add('visible');
+          }
+        }
+      }
+
+      function hidePickerControls() {
+        const controls = document.getElementById('picker-controls');
+        if (controls) {
+          controls.classList.remove('visible');
+        }
+      }
+
+      // Handle "Select All in Folder" button click
+      async function handleSelectAllInFolder() {
+        if (isSelectingAll) {
+          return;
+        }
+
+        const btn = document.getElementById('select-all-btn');
+        if (!btn) return;
+
+        btn.classList.add('loading');
+        isSelectingAll = true;
+
+        try {
+          // Get current folder ID from picker or use root
+          const folderId = await getCurrentFolderId();
+          
+          if (!folderId) {
+            throw new Error('Unable to determine current folder');
+          }
+
+          const folderName = folderId === 'root' ? 'My Drive' : 'current folder';
+          console.log('📂 Fetching all audio files in', folderName, ':', folderId);
+
+          // Fetch all audio files in the folder using Google Drive API
+          const audioFiles = await fetchAllAudioFilesInFolder(folderId);
+
+          if (audioFiles.length === 0) {
+            showError(`No audio files found in ${folderName}.`);
+            btn.classList.remove('loading');
+            isSelectingAll = false;
+            return;
+          }
+
+          console.log('✅ Found', audioFiles.length, 'audio file(s) in', folderName);
+
+          // Warn if too many files (may exceed URL length limit)
+          const maxFilesForUrl = 15; // Approximate limit based on URL length
+          if (audioFiles.length > maxFilesForUrl) {
+            const proceed = confirm(
+              `Found ${audioFiles.length} audio files. Selecting all may exceed URL length limits.\n\n` +
+              `Consider selecting files in smaller batches (recommended: ${maxFilesForUrl} or fewer).\n\n` +
+              `Do you want to proceed anyway?`
+            );
+            
+            if (!proceed) {
+              btn.classList.remove('loading');
+              isSelectingAll = false;
+              return;
+            }
+          }
+
+          // Trigger selection callback with all files
+          triggerFileSelection(audioFiles);
+
+        } catch (error) {
+          console.error('❌ Error selecting all files:', error);
+          showError('Failed to select all files: ' + error.message);
+        } finally {
+          btn.classList.remove('loading');
+          isSelectingAll = false;
+        }
+      }
+
+      // Handle "Select All from My Drive" button click
+      async function handleSelectAllFromDrive() {
+        if (isSelectingAll) {
+          return;
+        }
+
+        const btn = document.getElementById('select-all-drive-btn');
+        if (!btn) return;
+
+        btn.classList.add('loading');
+        isSelectingAll = true;
+
+        try {
+          console.log('📂 Fetching all audio files from My Drive');
+
+          // Fetch all audio files from root (My Drive)
+          const audioFiles = await fetchAllAudioFilesInFolder('root');
+
+          if (audioFiles.length === 0) {
+            showError('No audio files found in My Drive.');
+            btn.classList.remove('loading');
+            isSelectingAll = false;
+            return;
+          }
+
+          console.log('✅ Found', audioFiles.length, 'audio file(s) in My Drive');
+
+          // Warn if too many files (may exceed URL length limit)
+          const maxFilesForUrl = 15; // Approximate limit based on URL length
+          if (audioFiles.length > maxFilesForUrl) {
+            const proceed = confirm(
+              `Found ${audioFiles.length} audio files in My Drive. Selecting all may exceed URL length limits.\n\n` +
+              `Consider selecting files in smaller batches (recommended: ${maxFilesForUrl} or fewer).\n\n` +
+              `Do you want to proceed anyway?`
+            );
+            
+            if (!proceed) {
+              btn.classList.remove('loading');
+              isSelectingAll = false;
+              return;
+            }
+          }
+
+          // Trigger selection callback with all files
+          triggerFileSelection(audioFiles);
+
+        } catch (error) {
+          console.error('❌ Error selecting all files from My Drive:', error);
+          showError('Failed to select all files: ' + error.message);
+        } finally {
+          btn.classList.remove('loading');
+          isSelectingAll = false;
+        }
+      }
+
+      // Update button text based on current folder
+      function updateSelectAllButtonText() {
+        const btn = document.getElementById('select-all-btn');
+        const textEl = document.getElementById('select-all-text');
+        
+        if (btn && textEl) {
+          if (currentFolderId && currentFolderId !== 'root') {
+            textEl.textContent = 'Select All in Current Folder';
+          } else {
+            textEl.textContent = 'Select All in Folder';
+          }
+        }
+      }
+
+      // Detect folder navigation by monitoring picker DOM
+      function detectFolderNavigation() {
+        // Try to detect folder changes by monitoring the picker's internal state
+        // This is a workaround since Google Picker doesn't expose current folder directly
+        
+        // Method 1: Monitor for folder clicks in the picker
+        const observer = new MutationObserver((mutations) => {
+          // Look for folder navigation indicators in the DOM
+          const folderElements = document.querySelectorAll('[data-folder-id], [data-id]');
+          folderElements.forEach(el => {
+            el.addEventListener('click', (e) => {
+              const folderId = el.getAttribute('data-folder-id') || el.getAttribute('data-id');
+              if (folderId && folderId !== 'root') {
+                currentFolderId = folderId;
+                console.log('📂 Detected folder navigation to:', folderId);
+              }
+            });
+          });
+        });
+
+        // Observe changes in the picker container
+        const pickerContainer = document.querySelector('.picker-dialog, [role="dialog"]');
+        if (pickerContainer) {
+          observer.observe(pickerContainer, {
+            childList: true,
+            subtree: true
+          });
+        }
+
+        // Method 2: Try to extract from URL or picker state
+        // Check if we can get folder ID from the picker's internal state
+        setTimeout(() => {
+          // Look for breadcrumb or navigation elements
+          const breadcrumbs = document.querySelectorAll('[class*="breadcrumb"], [class*="path"], [class*="folder"]');
+          breadcrumbs.forEach(el => {
+            const text = el.textContent || el.innerText;
+            // Try to extract folder ID from various sources
+            console.log('🔍 Checking breadcrumb:', text);
+          });
+        }, 1000);
+      }
+
+      // Get current folder ID from picker (if possible) or use root
+      async function getCurrentFolderId() {
+        // If we have a stored folder ID, use it
+        if (currentFolderId) {
+          return currentFolderId;
+        }
+
+        // Try to get from picker's current view
+        // Check if there's a way to get current folder from picker API
+        // For now, we'll use 'root' which will fetch from "My Drive"
+        console.log('📂 Using root folder (My Drive) - all audio files will be fetched');
+        return 'root';
+      }
+
+      // Fetch all audio files in a folder using Google Drive API
+      async function fetchAllAudioFilesInFolder(folderId) {
+        const audioMimeTypes = [
+          'audio/mpeg', 'audio/mp4', 'audio/x-m4a', 'audio/wav', 'audio/x-wav',
+          'audio/flac', 'audio/x-flac', 'audio/aac', 'audio/ogg', 'audio/aiff', 'audio/x-aiff'
+        ];
+
+        const mimeTypeQuery = audioMimeTypes.map(mt => `mimeType='${mt}'`).join(' or ');
+        
+        // For root (My Drive), search all files owned by the user
+        // For specific folders, search only files in that folder
+        let query;
+        if (folderId === 'root') {
+          // Search all audio files in My Drive (owned by user)
+          query = `(${mimeTypeQuery}) and trashed=false and 'me' in owners`;
+        } else {
+          // Search audio files in specific folder
+          query = `(${mimeTypeQuery}) and '${folderId}' in parents and trashed=false`;
+        }
+
+        const baseUrl = `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(query)}&fields=nextPageToken,files(id,name,mimeType,parents)&pageSize=1000`;
+
+        let allFiles = [];
+        let nextPageToken = null;
+        let pageCount = 0;
+        const maxPages = 100; // Safety limit to prevent infinite loops
+
+        do {
+          const url = nextPageToken ? `${baseUrl}&pageToken=${nextPageToken}` : baseUrl;
+          
+          const response = await fetch(url, {
+            headers: {
+              'Authorization': `Bearer ${PICKER_CONFIG.accessToken}`
+            }
+          });
+
+          if (!response.ok) {
+            const errorData = await response.json().catch(() => ({}));
+            throw new Error(errorData.error?.message || `HTTP ${response.status}: ${response.statusText}`);
+          }
+
+          const data = await response.json();
+          const files = (data.files || []).map(file => ({
+            id: file.id,
+            name: file.name,
+            mimeType: file.mimeType,
+            parentId: file.parents && file.parents.length > 0 ? file.parents[0] : (folderId === 'root' ? 'root' : folderId)
+          }));
+
+          allFiles.push(...files);
+          nextPageToken = data.nextPageToken;
+          pageCount++;
+
+          console.log(`📄 Fetched page ${pageCount}: ${files.length} files (total: ${allFiles.length})`);
+
+          // Safety check
+          if (pageCount >= maxPages) {
+            console.warn(`⚠️ Reached maximum page limit (${maxPages}). Stopping pagination.`);
+            break;
+          }
+
+        } while (nextPageToken);
+
+        console.log(`✅ Total files fetched: ${allFiles.length} from ${pageCount} page(s)`);
+        return allFiles;
+      }
+
+      // Trigger file selection callback with the provided files
+      function triggerFileSelection(files) {
+        if (!files || files.length === 0) {
+          return;
+        }
+
+        console.log('🎵 Triggering selection for', files.length, 'file(s)');
+
+        // Build the same structure as the picker callback
+        const filesData = files.map(file => ({
+          id: file.id,
+          name: file.name,
+          mimeType: file.mimeType,
+          parentId: file.parentId
+        }));
+
+        // Show selection status
+        showSelectionStatus(files.length, files.length === 1 ? 'audio file selected' : 'audio files selected');
+
+        // Process the selection the same way as picker callback
+        if (callbackUrl.startsWith('ezgy://')) {
+          const target = new URL(callbackUrl);
+          const params = target.searchParams;
+          params.set('action', 'files_picked');
+          params.set('count', files.length.toString());
+
+          filesData.forEach((file, index) => {
+            params.set('id_' + index, file.id);
+            if (file.name) {
+              params.set('name_' + index, encodeURIComponent(file.name));
+            }
+            if (file.mimeType) {
+              params.set('mime_' + index, file.mimeType);
+            }
+            if (file.parentId) {
+              params.set('parent_' + index, file.parentId);
+            }
+          });
+
+          const finalUrl = target.toString();
+          console.log('🔵 Redirecting to deep link with', files.length, 'files');
+
+          // Check URL length
+          const maxUrlLength = 1800;
+          if (finalUrl.length > maxUrlLength) {
+            const errorMsg = `Too many files selected (${files.length} files). URL too long. Please select fewer files.`;
+            handlePickerError(errorMsg);
+            return;
+          }
+
+          try {
+            window.location.href = finalUrl;
+            setTimeout(function() {
+              if (document.visibilityState === 'visible') {
+                window.open(finalUrl, '_self');
+              }
+            }, 100);
+          } catch (error) {
+            console.error('❌ Error triggering deep link:', error);
+            try {
+              window.location.replace(finalUrl);
+            } catch (e) {
+              console.error('❌ Failed to trigger deep link:', e);
+            }
+          }
+        } else {
+          completeFlow('selected', {
+            files: filesData,
+            count: filesData.length
+          });
+        }
+      }
 
       window.addEventListener('DOMContentLoaded', () => {
         ensureSignInElements();
@@ -943,5 +1398,15 @@
       </div>
     </div>
     <div id="selection-status"></div>
+    <div id="picker-controls">
+      <button class="picker-control-btn" id="select-all-btn" onclick="handleSelectAllInFolder()">
+        <span class="icon">🎵</span>
+        <span class="text" id="select-all-text">Select All in Folder</span>
+      </button>
+      <button class="picker-control-btn" id="select-all-drive-btn" onclick="handleSelectAllFromDrive()">
+        <span class="icon">📁</span>
+        <span class="text">Select All from My Drive</span>
+      </button>
+    </div>
 </body>
 </html>
