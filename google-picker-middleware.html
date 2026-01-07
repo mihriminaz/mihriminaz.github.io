@@ -140,6 +140,42 @@
         color: #9ca3af;
         }
 
+      #selection-status {
+        position: fixed;
+        bottom: 20px;
+        left: 50%;
+        transform: translateX(-50%);
+        background: rgba(0, 0, 0, 0.9);
+        color: #f3f4f6;
+        padding: 12px 20px;
+        border-radius: 24px;
+        font-size: 14px;
+        font-weight: 500;
+        border: 1px solid rgba(79, 70, 229, 0.3);
+        box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+        z-index: 1000;
+        opacity: 0;
+        pointer-events: none;
+        transition: opacity 0.3s ease;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+      }
+
+      #selection-status.visible {
+        opacity: 1;
+        pointer-events: auto;
+      }
+
+      #selection-status .count {
+        color: #4d65ff;
+        font-weight: 600;
+      }
+
+      #selection-status .icon {
+        font-size: 16px;
+      }
+
       /* Mobile optimizations */
       @media (max-width: 768px) {
         html, body {
@@ -212,6 +248,19 @@
           line-height: 1.5;
           padding: 0 4px;
         }
+
+        #selection-status {
+          bottom: calc(16px + env(safe-area-inset-bottom));
+          padding: 14px 24px;
+          font-size: 15px;
+          border-radius: 28px;
+          transform: translateX(-50%) scale(0.95);
+          transition: opacity 0.3s ease, transform 0.3s ease;
+        }
+
+        #selection-status.visible {
+          transform: translateX(-50%) scale(1);
+        }
       }
       
       /* Extra small mobile devices */
@@ -239,7 +288,7 @@
     </style>
     <script>
       // Get configuration from URL parameters
-        const urlParams = new URLSearchParams(window.location.search);
+      const urlParams = new URLSearchParams(window.location.search);
       const PICKER_CONFIG = {
         apiKey: urlParams.get('api_key') || null,
         clientId: urlParams.get('client_id') || null,
@@ -255,6 +304,7 @@
       const signInElements = { overlay: null, buttonContainer: null, status: null };
       let gisButtonReady = false;
       let signInHandlerBound = false;
+      let selectionStatusTimeout;
 
       function ensureSignInElements() {
         if (!signInElements.overlay) {
@@ -474,38 +524,76 @@
         }
       }
 
+      function showSelectionStatus(count, message) {
+        const status = document.getElementById('selection-status');
+        if (status && count > 0) {
+          status.innerHTML = `
+            <span class="icon">🎵</span>
+            <span class="count">${count}</span> ${message}
+          `;
+          status.classList.add('visible');
+
+          // Auto-hide after 3 seconds
+          clearTimeout(selectionStatusTimeout);
+          selectionStatusTimeout = setTimeout(() => {
+            hideSelectionStatus();
+          }, 3000);
+        }
+      }
+
+      function hideSelectionStatus() {
+        const status = document.getElementById('selection-status');
+        if (status) {
+          status.classList.remove('visible');
+        }
+        clearTimeout(selectionStatusTimeout);
+      }
+
+      function updateSelectionStatus(count) {
+        if (count === 0) {
+          hideSelectionStatus();
+        } else {
+          const message = count === 1 ? 'file selected' : 'files selected';
+          showSelectionStatus(count, message);
+        }
+      }
+
       function handlePickerError(message) {
         showError(message);
         showSignInOverlay(message);
         initializeSignInButton();
       }
     
-    function pickerCallback(data) {
+      function pickerCallback(data) {
         if (!data) {
             return;
         }
-        
+
         const action = data[google.picker.Response.ACTION];
         if (action === google.picker.Action.PICKED) {
           const docs = data[google.picker.Response.DOCUMENTS] || [];
-          
+
+          console.log('📋 Google Picker returned', docs.length, 'document(s)');
+
           if (PICKER_CONFIG.mode === 'files') {
             // File selection mode - handle audio files
             const files = [];
+            const skippedFiles = [];
             const audioMimeTypes = [
               'audio/mpeg', 'audio/mp4', 'audio/x-m4a', 'audio/wav', 'audio/x-wav',
               'audio/flac', 'audio/x-flac', 'audio/aac', 'audio/ogg', 'audio/aiff', 'audio/x-aiff'
             ];
-            
+
             for (let i = 0; i < docs.length; i++) {
               const doc = docs[i];
               const mimeType = doc[google.picker.Document.MIME_TYPE];
-              // Accept any audio file or files that look like audio based on extension
               const name = doc[google.picker.Document.NAME] || '';
-              const isAudio = audioMimeTypes.includes(mimeType) || 
+
+              // Accept any audio file or files that look like audio based on extension
+              const isAudio = audioMimeTypes.includes(mimeType) ||
                              mimeType.startsWith('audio/') ||
                              /\.(mp3|m4a|wav|flac|aac|ogg|aiff)$/i.test(name);
-              
+
               if (isAudio) {
                 files.push({
                   id: doc[google.picker.Document.ID],
@@ -513,16 +601,36 @@
                   mimeType: mimeType,
                   parentId: doc[google.picker.Document.PARENT_ID] || null
                 });
+                console.log('✅ Added audio file:', name, '(ID:', doc[google.picker.Document.ID], ')');
+              } else {
+                skippedFiles.push({
+                  name: name,
+                  mimeType: mimeType
+                });
+                console.log('⏭️ Skipped non-audio file:', name, '(MIME:', mimeType, ')');
               }
             }
-            
+
+            console.log('📊 Selection summary:');
+            console.log('  - Total documents selected:', docs.length);
+            console.log('  - Audio files found:', files.length);
+            console.log('  - Non-audio files skipped:', skippedFiles.length);
+
+            // Show selection status to user
+            showSelectionStatus(files.length, files.length === 1 ? 'audio file selected' : 'audio files selected');
+
             if (files.length > 0) {
+              // Warn if many files selected (potential URL length issues)
+              if (files.length > 50) {
+                console.warn('⚠️ Large selection detected (' + files.length + ' files). URL may be truncated.');
+              }
+
               if (callbackUrl.startsWith('ezgy://')) {
                 const target = new URL(callbackUrl);
                 const params = target.searchParams;
                 params.set('action', 'files_picked');
                 params.set('count', files.length.toString());
-                
+
                 files.forEach((file, index) => {
                   params.set('id_' + index, file.id);
                   if (file.name) {
@@ -535,11 +643,21 @@
                     params.set('parent_' + index, file.parentId);
                   }
                 });
-                
+
                 const finalUrl = target.toString();
                 console.log('🔵 Redirecting to deep link:', finalUrl);
-                console.log('🔵 Files selected:', files.length);
-                
+                console.log('🔵 Audio files selected:', files.length, '- URL length:', finalUrl.length, 'chars');
+
+                // Check for URL length limits (iOS deep links have ~2KB limit)
+                const maxUrlLength = 1800; // Conservative limit for iOS deep links
+                if (finalUrl.length > maxUrlLength) {
+                  console.error('❌ URL too long (' + finalUrl.length + ' chars, limit: ' + maxUrlLength + ')');
+                  const errorMsg = 'Too many files selected. Please select fewer files (maximum ~' + Math.floor(maxUrlLength / 100) + ' files).';
+                  handlePickerError(errorMsg);
+                  completeFlow('error', { errorMessage: encodeURIComponent(errorMsg) });
+                  return;
+                }
+
                 try {
                   window.location.href = finalUrl;
                   setTimeout(function() {
@@ -558,12 +676,16 @@
               } else {
                 completeFlow('selected', {
                   files: files,
-                  count: files.length
+                  count: files.length,
+                  skippedCount: skippedFiles.length
                 });
               }
             } else {
-              handlePickerError('No audio files selected. Please select music files (MP3, M4A, WAV, FLAC, etc.).');
-              completeFlow('error', { errorMessage: encodeURIComponent('No audio files selected') });
+              const message = 'No audio files selected. Please select music files (MP3, M4A, WAV, FLAC, etc.).';
+              console.warn('⚠️', message);
+              console.log('Available file types in selection:', skippedFiles.map(f => f.name + ' (' + f.mimeType + ')'));
+              handlePickerError(message);
+              completeFlow('error', { errorMessage: encodeURIComponent(message) });
             }
           } else {
             // Folder selection mode (legacy)
@@ -820,5 +942,6 @@
         <div id="signin-status"></div>
       </div>
     </div>
+    <div id="selection-status"></div>
 </body>
 </html>
