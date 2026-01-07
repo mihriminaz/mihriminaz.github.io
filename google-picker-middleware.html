@@ -1,0 +1,545 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1" />
+    <title>Google Picker</title>
+    <style>
+      html, body {
+            margin: 0;
+            padding: 0;
+        height: 100%;
+        width: 100%;
+        background-color: #000000;
+        font-family: "Inter", "SF Pro Text", "SFProText", "Helvetica Neue", Arial, sans-serif;
+        color: #f3f4f6;
+        overflow: hidden;
+      }
+      #picker-root {
+        height: 100%;
+      }
+      #loader {
+        position: absolute;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        flex-direction: column;
+        background: rgba(0, 0, 0, 0.9);
+        z-index: 10;
+        transition: opacity 180ms ease;
+      }
+      #loader.hidden {
+        opacity: 0;
+        pointer-events: none;
+      }
+      .spinner {
+        width: 40px;
+        height: 40px;
+        border-radius: 999px;
+        border: 4px solid rgba(79, 70, 229, 0.25);
+        border-top-color: #4d65ff;
+        animation: spin 1s linear infinite;
+        margin-bottom: 16px;
+      }
+      @keyframes spin {
+        to {
+          transform: rotate(360deg);
+        }
+      }
+      #error-banner {
+        position: absolute;
+        top: 12px;
+        left: 12px;
+        right: 12px;
+        padding: 14px 16px;
+        border-radius: 12px;
+        background: rgba(239, 68, 68, 0.12);
+        color: #fca5a5;
+        border: 1px solid rgba(239, 68, 68, 0.25);
+        font-size: 15px;
+        line-height: 1.4;
+        display: none;
+        z-index: 20;
+      }
+      #error-banner.visible {
+        display: block;
+      }
+      #signin-overlay {
+        position: absolute;
+        inset: 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        background: rgba(0, 0, 0, 0.88);
+        z-index: 30;
+        padding: 24px;
+        opacity: 0;
+        pointer-events: none;
+        transition: opacity 160ms ease;
+      }
+      #signin-overlay.visible {
+        opacity: 1;
+        pointer-events: auto;
+      }
+      #signin-card {
+        width: 100%;
+        max-width: 360px;
+        border-radius: 18px;
+        background: #0a0a0a;
+        border: 1px solid rgba(31, 31, 31, 0.85);
+        padding: 28px 24px;
+        box-shadow: 0 32px 120px rgba(0, 0, 0, 0.45);
+            text-align: center;
+      }
+      #signin-card h2 {
+        margin: 0 0 12px;
+        font-size: 20px;
+        font-weight: 700;
+        color: #f3f4f6;
+      }
+      #signin-card p {
+        margin: 0 0 18px;
+        font-size: 14px;
+        line-height: 1.5;
+        color: #9ca3af;
+      }
+      #signin-button {
+        display: flex;
+        justify-content: center;
+        margin-bottom: 18px;
+      }
+      #signin-status {
+        margin-top: 14px;
+        font-size: 13px;
+        color: #9ca3af;
+        }
+    </style>
+    <script>
+      // Get configuration from URL parameters
+        const urlParams = new URLSearchParams(window.location.search);
+      const PICKER_CONFIG = {
+        apiKey: urlParams.get('api_key') || null,
+        clientId: urlParams.get('client_id') || null,
+        accessToken: urlParams.get('token') || null,
+        locale: (urlParams.get('locale') || 'en').replace('_', '-'),
+      };
+      
+      const callbackUrl = urlParams.get('callback') || 'ezgy://googlepicker';
+      const signInElements = { overlay: null, buttonContainer: null, status: null };
+      let gisButtonReady = false;
+      let signInHandlerBound = false;
+
+      function ensureSignInElements() {
+        if (!signInElements.overlay) {
+          signInElements.overlay = document.getElementById('signin-overlay');
+          signInElements.buttonContainer = document.getElementById('signin-button');
+          signInElements.status = document.getElementById('signin-status');
+        }
+        return signInElements;
+      }
+
+      function setSignInStatus(message) {
+        const { status } = ensureSignInElements();
+        if (status) {
+          status.textContent = message || '';
+        }
+      }
+
+      function showSignInOverlay(message) {
+        const { overlay } = ensureSignInElements();
+        if (overlay) {
+          overlay.classList.add('visible');
+        }
+        if (message !== undefined) {
+          setSignInStatus(message);
+        }
+      }
+
+      function hideSignInOverlay() {
+        const { overlay } = ensureSignInElements();
+        if (overlay) {
+          overlay.classList.remove('visible');
+        }
+        setSignInStatus('');
+      }
+
+      function handleSignInClick() {
+        setSignInStatus('Waiting for Google authentication…');
+      }
+
+      function handleCredentialResponse(response) {
+        if (!response || !response.credential) {
+          showSignInOverlay('Sign-in was cancelled. Try again.');
+          return;
+        }
+        setSignInStatus('Opening Google Picker…');
+        // After sign-in, we still need to use the access token from the app
+        // The sign-in button is mainly for verification/fallback
+        beginPickerFlow();
+      }
+
+      function initializeSignInButton() {
+        const { buttonContainer } = ensureSignInElements();
+        if (!buttonContainer) {
+          return;
+        }
+        if (!window.google || !google.accounts || !google.accounts.id) {
+          return;
+        }
+        if (!gisButtonReady && PICKER_CONFIG.clientId) {
+          google.accounts.id.initialize({
+            client_id: PICKER_CONFIG.clientId,
+            callback: handleCredentialResponse,
+            auto_select: false,
+          });
+          google.accounts.id.renderButton(buttonContainer, {
+            theme: 'outline',
+            size: 'large',
+            type: 'standard',
+          });
+          gisButtonReady = true;
+        }
+        if (!signInHandlerBound && buttonContainer) {
+          buttonContainer.addEventListener('click', handleSignInClick);
+          signInHandlerBound = true;
+        }
+        setSignInStatus('Choose your Google account to continue.');
+      }
+
+      function beginPickerFlow() {
+        // If we have an access token, proceed directly
+        if (PICKER_CONFIG.accessToken && PICKER_CONFIG.accessToken.length >= 10) {
+          hideSignInOverlay();
+          loadPickerScript();
+                    } else {
+          // Show sign-in overlay if no token
+          showSignInOverlay('Please sign in to access Google Drive.');
+          initializeSignInButton();
+        }
+      }
+
+      function resolveCallbackTarget(status, payload) {
+        if (!callbackUrl) {
+          return null;
+        }
+
+        try {
+          // Handle both deep link format (ezgy://googlepicker) and callback URL format
+          if (callbackUrl.startsWith('ezgy://')) {
+            // Legacy format: ezgy://googlepicker?action=picked&count=N&id_0=...&name_0=...
+            const target = new URL(callbackUrl);
+            const params = target.searchParams;
+            
+            if (status === 'selected' && payload.docId) {
+              // Convert new format to legacy format for compatibility
+              params.set('action', 'picked');
+              params.set('count', '1');
+              params.set('id_0', payload.docId);
+              if (payload.docName) {
+                params.set('name_0', payload.docName);
+              }
+            } else if (status === 'cancel') {
+              params.set('action', 'cancelled');
+            } else if (status === 'error') {
+              params.set('action', 'error');
+              if (payload.errorMessage) {
+                params.set('message', payload.errorMessage);
+              }
+            }
+            
+            return target.toString();
+          } else {
+            // New callback URL format: callback?pickerStatus=selected&docId=...
+            const target = new URL(callbackUrl);
+            const params = target.searchParams;
+            params.set('pickerSource', 'google-picker');
+            params.set('pickerStatus', status);
+            Object.entries(payload || {}).forEach(([key, value]) => {
+              if (value !== undefined && value !== null) {
+                params.set(key, value);
+              }
+            });
+            return target.toString();
+          }
+        } catch (error) {
+          console.error('Failed to resolve callback target:', error);
+          return null;
+        }
+      }
+
+      function completeFlow(status, payload) {
+        const targetUrl = resolveCallbackTarget(status, payload);
+        if (!targetUrl) {
+          if (status === 'error') {
+            hideLoader();
+            showSignInOverlay(payload?.errorMessage ? decodeURIComponent(payload.errorMessage) : undefined);
+            initializeSignInButton();
+          }
+          return;
+        }
+
+        window.location.href = targetUrl;
+      }
+
+      function sendMessage(message) {
+        const payload = JSON.stringify(message);
+        if (window.ReactNativeWebView && typeof window.ReactNativeWebView.postMessage === 'function') {
+          window.ReactNativeWebView.postMessage(payload);
+        } else if (window.parent && window.parent !== window) {
+          window.parent.postMessage(payload, '*');
+        } else {
+          console.log('Picker message', message);
+        }
+      }
+
+      function showError(message) {
+        const banner = document.getElementById('error-banner');
+        if (banner) {
+          banner.textContent = message;
+          banner.classList.add('visible');
+        }
+      }
+
+      function hideLoader() {
+        const loader = document.getElementById('loader');
+        if (loader) {
+          loader.classList.add('hidden');
+          setTimeout(() => loader.remove(), 220);
+        }
+      }
+
+      function handlePickerError(message) {
+        showError(message);
+        showSignInOverlay(message);
+        initializeSignInButton();
+      }
+    
+    function pickerCallback(data) {
+        if (!data) {
+            return;
+        }
+        
+        const action = data[google.picker.Response.ACTION];
+        if (action === google.picker.Action.PICKED) {
+          const docs = data[google.picker.Response.DOCUMENTS] || [];
+            const folders = [];
+            
+            // Filter for folders only
+            for (let i = 0; i < docs.length; i++) {
+                const doc = docs[i];
+            if (doc[google.picker.Document.MIME_TYPE] === 'application/vnd.google-apps.folder') {
+                    folders.push({
+                id: doc[google.picker.Document.ID],
+                name: doc[google.picker.Document.NAME] || null
+                    });
+                }
+            }
+            
+            if (folders.length > 0) {
+            // Handle multiple folders - build legacy format for compatibility
+            if (callbackUrl.startsWith('ezgy://')) {
+              // Legacy format: ezgy://googlepicker?action=picked&count=N&id_0=...&name_0=...
+              const target = new URL(callbackUrl);
+              const params = target.searchParams;
+              params.set('action', 'picked');
+              params.set('count', folders.length.toString());
+                
+                folders.forEach((folder, index) => {
+                params.set('id_' + index, folder.id);
+                if (folder.name) {
+                  params.set('name_' + index, folder.name);
+                }
+              });
+              
+              window.location.href = target.toString();
+            } else {
+              // New format: send first folder (or could be extended for multiple)
+              const firstFolder = folders[0];
+              const selection = {
+                type: 'picker:selected',
+                docId: firstFolder.id,
+                docName: firstFolder.name,
+                mimeType: 'application/vnd.google-apps.folder',
+              };
+              sendMessage(selection);
+              completeFlow('selected', {
+                docId: selection.docId,
+                docName: selection.docName || undefined,
+              });
+            }
+          } else {
+            handlePickerError('No folders selected. Please select at least one folder.');
+            completeFlow('error', { errorMessage: encodeURIComponent('No folders selected') });
+          }
+        } else if (action === google.picker.Action.CANCEL) {
+          sendMessage({ type: 'picker:cancel' });
+          completeFlow('cancel', {});
+        }
+      }
+
+      function enforceFullScreen() {
+        const overlays = document.getElementsByClassName('picker-dialog');
+        for (const overlay of overlays) {
+          overlay.style.width = '100%';
+          overlay.style.height = '100%';
+          overlay.style.left = '0';
+          overlay.style.top = '0';
+          overlay.style.maxWidth = '100%';
+          overlay.style.maxHeight = '100%';
+        }
+      }
+
+      function createPicker() {
+        try {
+          if (!PICKER_CONFIG.apiKey) {
+            throw new Error('API key is required for Google Picker');
+          }
+          
+          if (!PICKER_CONFIG.accessToken || PICKER_CONFIG.accessToken.length < 10) {
+            throw new Error('Access token is required');
+          }
+
+          // Configure view to show folders (not spreadsheets)
+          const view = new google.picker.DocsView(google.picker.ViewId.FOLDERS)
+            .setIncludeFolders(true)
+            .setSelectFolderEnabled(true)
+            .setMimeTypes('application/vnd.google-apps.folder')
+            .setEnableDrives(false);
+
+          const builder = new google.picker.PickerBuilder()
+            .setDeveloperKey(PICKER_CONFIG.apiKey)
+            .setOAuthToken(PICKER_CONFIG.accessToken)
+            .setLocale(PICKER_CONFIG.locale)
+            .addView(view)
+            .setSize(window.innerWidth, window.innerHeight)
+            .setCallback(pickerCallback)
+            .enableFeature(google.picker.Feature.NAV_HIDDEN)
+            .enableFeature(google.picker.Feature.MULTISELECT_ENABLED);
+
+          const picker = builder.build();
+          picker.setVisible(true);
+          hideLoader();
+          enforceFullScreen();
+          return true;
+        } catch (error) {
+          console.error('Failed to create Google Picker', error);
+          const encodedMessage = encodeURIComponent('Unable to initialize Google Picker: ' + error.message);
+          handlePickerError('Unable to initialize Google Picker: ' + error.message);
+          completeFlow('error', { errorMessage: encodedMessage });
+          return false;
+        }
+      }
+
+      function maybeCreatePicker() {
+        if (pickerInitialized) {
+          return;
+        }
+        if (!pickerModuleReady || !PICKER_CONFIG.accessToken) {
+            return;
+        }
+        if (createPicker()) {
+          pickerInitialized = true;
+        }
+      }
+
+      function loadPickerScript() {
+        if (pickerScriptLoaded) {
+          return;
+        }
+        pickerScriptLoaded = true;
+        const script = document.createElement('script');
+        script.src = 'https://apis.google.com/js/api.js';
+        script.async = true;
+        script.onload = () => {
+          if (!window.gapi) {
+            pickerScriptLoaded = false;
+            handlePickerError('Google API client failed to load.');
+            return;
+          }
+          gapi.load('picker', { callback: onPickerApiLoad });
+        };
+        script.onerror = () => {
+          pickerScriptLoaded = false;
+          handlePickerError('Failed to load Google API script.');
+        };
+        document.head.appendChild(script);
+      }
+
+      function onPickerApiLoad() {
+        pickerModuleReady = true;
+        maybeCreatePicker();
+      }
+
+      let pickerInitialized = false;
+      let pickerScriptLoaded = false;
+      let pickerModuleReady = false;
+
+      window.addEventListener('resize', enforceFullScreen);
+
+      window.addEventListener('DOMContentLoaded', () => {
+        ensureSignInElements();
+        
+        // Check if we have required config
+        if (!PICKER_CONFIG.accessToken || PICKER_CONFIG.accessToken.length < 10) {
+          showSignInOverlay();
+          setSignInStatus('Loading Google Sign-In…');
+    } else {
+          // We have a token, proceed directly
+          beginPickerFlow();
+        }
+
+        if (window.google?.accounts?.id) {
+          initializeSignInButton();
+        }
+      });
+
+      function onGisLoaded() {
+        initializeSignInButton();
+        // If we don't have a token, show sign-in overlay
+        if (!PICKER_CONFIG.accessToken || PICKER_CONFIG.accessToken.length < 10) {
+          showSignInOverlay('Please sign in to access Google Drive.');
+        }
+      }
+
+      function onGisLoadError() {
+        // If GIS fails to load but we have a token, try to proceed anyway
+        if (PICKER_CONFIG.accessToken && PICKER_CONFIG.accessToken.length >= 10) {
+          hideSignInOverlay();
+          beginPickerFlow();
+        } else {
+          showSignInOverlay('Failed to load Google Sign-In. Refresh and try again.');
+        }
+      }
+
+      window.onGisLoaded = onGisLoaded;
+      window.onGisLoadError = onGisLoadError;
+    </script>
+    <script
+      src="https://accounts.google.com/gsi/client"
+      async
+      defer
+      onload="onGisLoaded()"
+      onerror="onGisLoadError()"
+    ></script>
+  </head>
+  <body>
+    <div id="picker-root"></div>
+    <div id="loader">
+      <div class="spinner"></div>
+      <div>Loading Google Picker…</div>
+    </div>
+    <div id="error-banner"></div>
+    <div id="signin-overlay">
+      <div id="signin-card">
+        <h2>Connect your Google account</h2>
+        <p>Sign in to pick folders from Google Drive.</p>
+        <div id="signin-button"></div>
+        <div id="signin-status"></div>
+      </div>
+    </div>
+</body>
+</html>
