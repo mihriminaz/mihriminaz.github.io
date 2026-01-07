@@ -351,11 +351,36 @@
                 folders.forEach((folder, index) => {
                 params.set('id_' + index, folder.id);
                 if (folder.name) {
-                  params.set('name_' + index, folder.name);
+                  // Properly encode folder names
+                  params.set('name_' + index, encodeURIComponent(folder.name));
                 }
               });
               
-              window.location.href = target.toString();
+              const finalUrl = target.toString();
+              console.log('🔵 Redirecting to deep link:', finalUrl);
+              console.log('🔵 Folders selected:', folders.length);
+              
+              // Try multiple methods to ensure the deep link is triggered
+              try {
+                // Method 1: Use location.href
+                window.location.href = finalUrl;
+                
+                // Fallback: Also try window.open after a short delay
+                setTimeout(function() {
+                  if (document.visibilityState === 'visible') {
+                    console.log('🔵 Fallback: Trying window.open');
+                    window.open(finalUrl, '_self');
+                  }
+                }, 100);
+              } catch (error) {
+                console.error('❌ Error triggering deep link:', error);
+                // Last resort: try location.replace
+                try {
+                  window.location.replace(finalUrl);
+                } catch (e) {
+                  console.error('❌ Failed to trigger deep link:', e);
+                }
+              }
             } else {
               // New format: send first folder (or could be extended for multiple)
               const firstFolder = folders[0];
