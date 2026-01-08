@@ -382,6 +382,7 @@
         apiKey: urlParams.get('api_key') || null,
         clientId: urlParams.get('client_id') || null,
         accessToken: urlParams.get('token') || null,
+        appId: urlParams.get('app_id') || null,  // Cloud project number - required for picker to access user's files
         locale: (urlParams.get('locale') || 'en').replace('_', '-'),
         // Mode: 'folders' for folder selection, 'files' for audio file selection
         mode: urlParams.get('mode') || 'files',
@@ -876,13 +877,25 @@
           if (PICKER_CONFIG.mode === 'files') {
             // Audio file selection mode - show audio files for direct selection
             // This grants drive.file access to the selected files
-            // Note: We use ViewId.DOCS to show all files and allow navigation
-            // The MIME type filter is applied client-side after selection
-            // because Google Picker's setMimeTypes can be unreliable for audio files
+            const audioMimeTypes = [
+              'audio/mpeg',      // MP3
+              'audio/mp4',       // M4A
+              'audio/x-m4a',     // M4A alternate
+              'audio/wav',       // WAV
+              'audio/x-wav',     // WAV alternate
+              'audio/flac',      // FLAC
+              'audio/x-flac',    // FLAC alternate
+              'audio/aac',       // AAC
+              'audio/ogg',       // OGG
+              'audio/aiff',      // AIFF
+              'audio/x-aiff'     // AIFF alternate
+            ].join(',');
+            
             view = new google.picker.DocsView(google.picker.ViewId.DOCS)
               .setIncludeFolders(true)  // Allow navigating into folders
               .setSelectFolderEnabled(false)  // But don't allow selecting folders
-              .setEnableDrives(true);  // Enable Shared Drives support
+              .setMimeTypes(audioMimeTypes)
+              .setEnableDrives(false);
             
             // If a parent folder is specified, start from there
             if (PICKER_CONFIG.parentFolderId) {
@@ -894,18 +907,18 @@
               .setIncludeFolders(true)
               .setSelectFolderEnabled(true)
               .setMimeTypes('application/vnd.google-apps.folder')
-              .setEnableDrives(true);  // Enable Shared Drives support
+              .setEnableDrives(false);
           }
 
           const builder = new google.picker.PickerBuilder()
             .setDeveloperKey(PICKER_CONFIG.apiKey)
             .setOAuthToken(PICKER_CONFIG.accessToken)
+            .setAppId(PICKER_CONFIG.appId)  // Cloud project number - required to access user's files
             .setLocale(PICKER_CONFIG.locale)
             .addView(view)
             .setSize(window.innerWidth, window.innerHeight)
             .setCallback(pickerCallback)
             .enableFeature(google.picker.Feature.NAV_HIDDEN)
-            .enableFeature(google.picker.Feature.SUPPORT_DRIVES)  // Enable Shared Drives support
             .enableFeature(google.picker.Feature.MULTISELECT_ENABLED);
 
           const picker = builder.build();
