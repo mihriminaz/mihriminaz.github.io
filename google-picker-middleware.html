@@ -871,45 +871,23 @@
             throw new Error('Access token is required');
           }
 
-          // Define audio MIME types for filtering
-          const audioMimeTypes = [
-            'audio/mpeg',      // MP3
-            'audio/mp4',       // M4A
-            'audio/x-m4a',     // M4A alternate
-            'audio/wav',       // WAV
-            'audio/x-wav',     // WAV alternate
-            'audio/flac',      // FLAC
-            'audio/x-flac',    // FLAC alternate
-            'audio/aac',       // AAC
-            'audio/ogg',       // OGG
-            'audio/aiff',      // AIFF
-            'audio/x-aiff'     // AIFF alternate
-          ].join(',');
-
           let view;
-          let sharedDrivesView;
           
           if (PICKER_CONFIG.mode === 'files') {
             // Audio file selection mode - show audio files for direct selection
             // This grants drive.file access to the selected files
+            // Note: We use ViewId.DOCS to show all files and allow navigation
+            // The MIME type filter is applied client-side after selection
+            // because Google Picker's setMimeTypes can be unreliable for audio files
             view = new google.picker.DocsView(google.picker.ViewId.DOCS)
               .setIncludeFolders(true)  // Allow navigating into folders
               .setSelectFolderEnabled(false)  // But don't allow selecting folders
-              .setMimeTypes(audioMimeTypes)
               .setEnableDrives(true);  // Enable Shared Drives support
             
             // If a parent folder is specified, start from there
             if (PICKER_CONFIG.parentFolderId) {
               view.setParent(PICKER_CONFIG.parentFolderId);
             }
-            
-            // Create a dedicated Shared Drives view for audio files
-            sharedDrivesView = new google.picker.DocsView(google.picker.ViewId.DOCS)
-              .setIncludeFolders(true)
-              .setSelectFolderEnabled(false)
-              .setMimeTypes(audioMimeTypes)
-              .setEnableDrives(true)
-              .setOwnedByMe(false);  // Show files not owned by user (Shared Drives)
           } else {
             // Folder selection mode (legacy)
             view = new google.picker.DocsView(google.picker.ViewId.FOLDERS)
@@ -917,14 +895,6 @@
               .setSelectFolderEnabled(true)
               .setMimeTypes('application/vnd.google-apps.folder')
               .setEnableDrives(true);  // Enable Shared Drives support
-            
-            // Create a dedicated Shared Drives view for folders
-            sharedDrivesView = new google.picker.DocsView(google.picker.ViewId.FOLDERS)
-              .setIncludeFolders(true)
-              .setSelectFolderEnabled(true)
-              .setMimeTypes('application/vnd.google-apps.folder')
-              .setEnableDrives(true)
-              .setOwnedByMe(false);  // Show folders not owned by user (Shared Drives)
           }
 
           const builder = new google.picker.PickerBuilder()
@@ -932,9 +902,9 @@
             .setOAuthToken(PICKER_CONFIG.accessToken)
             .setLocale(PICKER_CONFIG.locale)
             .addView(view)
-            .addView(sharedDrivesView)  // Add Shared Drives view
             .setSize(window.innerWidth, window.innerHeight)
             .setCallback(pickerCallback)
+            .enableFeature(google.picker.Feature.NAV_HIDDEN)
             .enableFeature(google.picker.Feature.SUPPORT_DRIVES)  // Enable Shared Drives support
             .enableFeature(google.picker.Feature.MULTISELECT_ENABLED);
 
