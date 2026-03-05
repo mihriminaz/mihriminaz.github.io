@@ -10,6 +10,7 @@
     <link rel="icon" type="image/png" sizes="512x512" href="icons/LaunchIcon@3x.png">
     <link rel="apple-touch-icon" sizes="180x180" href="icons/LaunchIcon@2x.png">
     <link rel="shortcut icon" href="favicon.png">
+    <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,100..1000;1,9..40,100..1000&display=swap" rel="stylesheet">
     <title>Privacy Policy - ezgy</title>
     <style>
         * {
@@ -19,16 +20,16 @@
         }
 
         body {
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
-            color: #ffffff;
-            background: rgb(26, 26, 38);
+            font-family: 'DM Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+            color: rgba(255, 255, 255, 0.9);
+            background: rgb(18, 18, 24);
             line-height: 1.6;
         }
 
         .container {
-            max-width: 900px;
+            max-width: min(900px, 88vw);
             margin: 0 auto;
-            padding: 80px 20px 60px;
+            padding: 80px clamp(20px, 4vw, 40px) 60px;
         }
 
         .header {
@@ -40,10 +41,7 @@
             font-size: 3rem;
             font-weight: 700;
             margin-bottom: 20px;
-            background: linear-gradient(135deg, rgba(160, 32, 240, 0.9), rgba(0, 255, 255, 0.6));
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
-            background-clip: text;
+            color: rgba(255, 255, 255, 0.95);
         }
 
         .back-link {
@@ -63,7 +61,7 @@
             background: rgba(38, 38, 38, 0.8);
             border: 1px solid rgba(160, 32, 240, 0.2);
             border-radius: 15px;
-            padding: 40px;
+            padding: clamp(24px, 3vw, 40px);
             backdrop-filter: blur(10px);
         }
 
@@ -109,6 +107,12 @@
             font-size: 0.9rem;
             margin-top: 40px;
             text-align: center;
+        }
+
+        @media (max-width: 768px) {
+            .container {
+                padding: 60px 20px 40px;
+            }
         }
     </style>
 </head>
